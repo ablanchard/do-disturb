@@ -17,6 +17,7 @@ import com.dodisturb.app.data.model.BlockedCallInfo
 import com.dodisturb.app.data.repository.CalendarInfo
 import com.dodisturb.app.data.repository.PreferencesManager
 import com.dodisturb.app.data.repository.TimeframeRepository
+import com.dodisturb.app.util.AnalyticsHelper
 import com.dodisturb.app.util.DndManager
 import com.dodisturb.app.worker.CalendarSyncWorker
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -175,6 +176,7 @@ class MainViewModel(private val context: Context) : ViewModel() {
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
             prefs.googleAccountEmail = account.email
             Timber.d("Google sign-in successful")
+            AnalyticsHelper.logSignInCompleted()
 
             // Start the sync worker after sign-in
             CalendarSyncWorker.enqueue(context)
@@ -182,6 +184,7 @@ class MainViewModel(private val context: Context) : ViewModel() {
             refreshState()
         } catch (e: ApiException) {
             Timber.e(e, "Google sign-in failed with status code: %d", e.statusCode)
+            AnalyticsHelper.logSignInFailed(e.statusCode)
         }
     }
 
@@ -193,10 +196,12 @@ class MainViewModel(private val context: Context) : ViewModel() {
     fun setBlockingEnabled(enabled: Boolean) {
         prefs.isBlockingEnabled = enabled
         _uiState.value = _uiState.value.copy(isBlockingEnabled = enabled)
+        AnalyticsHelper.logBlockingToggled(enabled)
     }
 
     fun triggerManualSync() {
         Timber.d("Manual sync triggered by user")
+        AnalyticsHelper.logManualSyncTriggered()
         _uiState.value = _uiState.value.copy(isSyncing = true, syncError = null)
         CalendarSyncWorker.syncNow(context)
 

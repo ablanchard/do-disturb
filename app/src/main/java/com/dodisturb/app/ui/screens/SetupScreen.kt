@@ -132,24 +132,9 @@ fun SetupScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Step 3: Call Screening Role
+        // Step 3: Google Sign-In
         SetupStepCard(
             stepNumber = 3,
-            title = "Call Screening",
-            description = "Set as default call screening app to filter calls.",
-            isCompleted = uiState.hasCallScreeningRole,
-            onAction = {
-                viewModel.getCallScreeningRoleIntent()?.let { intent ->
-                    callScreeningRoleLauncher.launch(intent)
-                }
-            }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Step 4: Google Sign-In
-        SetupStepCard(
-            stepNumber = 4,
             title = "Google Calendar",
             description = if (uiState.isGoogleSignedIn) {
                 "Signed in as ${uiState.googleAccountEmail}"
@@ -159,6 +144,21 @@ fun SetupScreen(
             isCompleted = uiState.isGoogleSignedIn,
             onAction = {
                 googleSignInLauncher.launch(viewModel.googleSignInClient.signInIntent)
+            }
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Step 4: Call Screening Role
+        SetupStepCard(
+            stepNumber = 4,
+            title = "Call Screening",
+            description = "Set as default call screening app to filter calls.",
+            isCompleted = uiState.hasCallScreeningRole,
+            onAction = {
+                viewModel.getCallScreeningRoleIntent()?.let { intent ->
+                    callScreeningRoleLauncher.launch(intent)
+                }
             }
         )
 

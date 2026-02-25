@@ -14,6 +14,7 @@ import com.dodisturb.app.data.model.AllowedTimeframe
 import com.dodisturb.app.data.repository.CalendarInfo
 import com.dodisturb.app.data.repository.PreferencesManager
 import com.dodisturb.app.data.repository.TimeframeRepository
+import com.dodisturb.app.util.AnalyticsHelper
 import com.dodisturb.app.util.DndManager
 import com.dodisturb.app.util.NotificationHelper
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -95,6 +96,7 @@ class CalendarSyncWorker(
 
     override suspend fun doWork(): Result {
         Timber.i("Calendar sync started")
+        AnalyticsHelper.logSyncStarted()
 
         val prefs = PreferencesManager(applicationContext)
         val db = AppDatabase.getInstance(applicationContext)
@@ -157,6 +159,7 @@ class CalendarSyncWorker(
 
             if (calendarEntry == null) {
                 Timber.w("Target calendar NOT FOUND among %d calendars", allCalendars.size)
+                AnalyticsHelper.logCalendarNotFound()
 
                 // Notify user and persist error
                 val availableNames = allCalendars.map { it.summaryOverride ?: it.summary ?: "" }
@@ -228,10 +231,12 @@ class CalendarSyncWorker(
 
             Timber.i("Calendar sync completed. In allowed timeframe: %s, timeframes: %d",
                 isInTimeframe, timeframes.size)
+            AnalyticsHelper.logSyncCompleted(timeframes.size, isInTimeframe)
             return Result.success()
 
         } catch (e: Exception) {
             Timber.e(e, "Calendar sync failed")
+            AnalyticsHelper.logSyncFailed(e.javaClass.simpleName)
             return Result.retry()
         }
     }

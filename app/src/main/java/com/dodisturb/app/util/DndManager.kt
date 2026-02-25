@@ -57,6 +57,7 @@ class DndManager(private val context: Context) {
             prefs.previousInterruptionFilter = currentFilter
             prefs.isDndManagedByApp = true
             notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+            AnalyticsHelper.logDndDisabled()
         } else {
             Timber.d("DND already disabled (filter is ALL)")
             // Still mark as managed so we know we're in an active timeframe
@@ -82,6 +83,7 @@ class DndManager(private val context: Context) {
         if (previousFilter != -1 && previousFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
             Timber.d("Restoring DND to previous filter: %d", previousFilter)
             notificationManager.setInterruptionFilter(previousFilter)
+            AnalyticsHelper.logDndRestored()
         } else {
             Timber.d("No previous DND state to restore (was already ALL or not set)")
         }

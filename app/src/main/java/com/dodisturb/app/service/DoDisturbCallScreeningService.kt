@@ -7,6 +7,7 @@ import com.dodisturb.app.data.db.AppDatabase
 import com.dodisturb.app.data.model.BlockedCallInfo
 import com.dodisturb.app.data.repository.PreferencesManager
 import com.dodisturb.app.data.repository.TimeframeRepository
+import com.dodisturb.app.util.AnalyticsHelper
 import com.dodisturb.app.util.ContactsHelper
 import com.dodisturb.app.util.NotificationHelper
 import timber.log.Timber
@@ -32,6 +33,7 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         // If blocking is disabled in settings, allow all calls
         if (!prefs.isBlockingEnabled) {
             Timber.d("Blocking is disabled, allowing call")
+            AnalyticsHelper.logCallAllowed("blocking_disabled")
             allowCall(callDetails)
             return
         }
@@ -41,6 +43,7 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         val repository = TimeframeRepository(db.timeframeDao())
         if (repository.isInAllowedTimeframeSync()) {
             Timber.d("In allowed timeframe, allowing call")
+            AnalyticsHelper.logCallAllowed("allowed_timeframe")
             allowCall(callDetails)
             return
         }
@@ -48,12 +51,14 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         // Check if the number is in contacts
         if (phoneNumber.isNotEmpty() && ContactsHelper.isNumberInContacts(this, phoneNumber)) {
             Timber.d("Caller is in contacts, allowing call")
+            AnalyticsHelper.logCallAllowed("in_contacts")
             allowCall(callDetails)
             return
         }
 
         // Number is not in contacts and we're not in an allowed timeframe -> block
         Timber.d("Blocking call (not in contacts, not in allowed timeframe)")
+        AnalyticsHelper.logCallBlocked()
 
         // Persist the blocked call to the database
         val blockedCall = BlockedCallInfo(
