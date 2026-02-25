@@ -25,7 +25,7 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         val handle: Uri? = callDetails.handle
         val phoneNumber = handle?.schemeSpecificPart ?: ""
 
-        Timber.d("Screening call from: %s", phoneNumber)
+        Timber.d("Screening incoming call")
 
         val prefs = PreferencesManager(this)
 
@@ -40,20 +40,20 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         val db = AppDatabase.getInstance(this)
         val repository = TimeframeRepository(db.timeframeDao())
         if (repository.isInAllowedTimeframeSync()) {
-            Timber.d("In allowed timeframe, allowing call from %s", phoneNumber)
+            Timber.d("In allowed timeframe, allowing call")
             allowCall(callDetails)
             return
         }
 
         // Check if the number is in contacts
         if (phoneNumber.isNotEmpty() && ContactsHelper.isNumberInContacts(this, phoneNumber)) {
-            Timber.d("Number %s is in contacts, allowing call", phoneNumber)
+            Timber.d("Caller is in contacts, allowing call")
             allowCall(callDetails)
             return
         }
 
         // Number is not in contacts and we're not in an allowed timeframe -> block
-        Timber.d("Blocking call from %s (not in contacts, not in allowed timeframe)", phoneNumber)
+        Timber.d("Blocking call (not in contacts, not in allowed timeframe)")
 
         // Persist the blocked call to the database
         val blockedCall = BlockedCallInfo(

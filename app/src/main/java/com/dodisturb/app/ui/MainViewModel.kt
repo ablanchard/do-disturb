@@ -174,14 +174,14 @@ class MainViewModel(private val context: Context) : ViewModel() {
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
             prefs.googleAccountEmail = account.email
-            Timber.d("Google sign-in successful: %s", account.email)
+            Timber.d("Google sign-in successful")
 
             // Start the sync worker after sign-in
             CalendarSyncWorker.enqueue(context)
 
             refreshState()
         } catch (e: ApiException) {
-            Timber.e(e, "Google sign-in failed: %d", e.statusCode)
+            Timber.e(e, "Google sign-in failed with status code: %d", e.statusCode)
         }
     }
 

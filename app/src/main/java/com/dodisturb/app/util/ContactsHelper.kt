@@ -33,15 +33,13 @@ object ContactsHelper {
             cursor = context.contentResolver.query(lookupUri, projection, null, null, null)
             val found = cursor != null && cursor.count > 0
             if (found) {
-                cursor?.moveToFirst()
-                val name = cursor?.getString(0) ?: "Unknown"
-                Timber.d("Number %s found in contacts: %s", phoneNumber, name)
+                Timber.d("Phone number found in contacts")
             } else {
-                Timber.d("Number %s NOT found in contacts", phoneNumber)
+                Timber.d("Phone number NOT found in contacts")
             }
             found
         } catch (e: Exception) {
-            Timber.e(e, "Error looking up phone number: %s", phoneNumber)
+            Timber.e(e, "Error looking up phone number in contacts")
             // On error, fail open (allow the call) rather than blocking a potentially valid contact
             true
         } finally {

@@ -94,7 +94,7 @@ class CalendarSyncWorker(
     }
 
     override suspend fun doWork(): Result {
-        Timber.i("========== CALENDAR SYNC STARTED ==========")
+        Timber.i("Calendar sync started")
 
         val prefs = PreferencesManager(applicationContext)
         val db = AppDatabase.getInstance(applicationContext)
@@ -108,8 +108,7 @@ class CalendarSyncWorker(
                 Timber.w("No Google account signed in, skipping sync")
                 return Result.retry()
             }
-            Timber.i("Google account: %s", account.email)
-            Timber.i("Account object: %s", account.account)
+            Timber.i("Google account available, starting sync")
 
             // Build the Google Calendar service
             val credential = GoogleAccountCredential.usingOAuth2(
@@ -117,7 +116,7 @@ class CalendarSyncWorker(
                 listOf(CalendarScopes.CALENDAR_READONLY)
             )
             credential.selectedAccount = account.account
-            Timber.i("Credential created, selectedAccount: %s", credential.selectedAccount)
+            Timber.i("Credential created successfully")
 
             val calendarService = Calendar.Builder(
                 NetHttpTransport(),
@@ -133,12 +132,7 @@ class CalendarSyncWorker(
             val calendarList = calendarService.calendarList().list().execute()
             val allCalendars = calendarList.items ?: emptyList()
 
-            Timber.i("========== ALL CALENDARS (%d) ==========", allCalendars.size)
-            allCalendars.forEachIndexed { index, entry ->
-                Timber.i("  [%d] summary=\"%s\", summaryOverride=\"%s\", id=\"%s\", accessRole=\"%s\"",
-                    index, entry.summary, entry.summaryOverride, entry.id, entry.accessRole)
-            }
-            Timber.i("==============================================")
+            Timber.i("Found %d calendars", allCalendars.size)
 
             // Persist the available calendars list for the debug screen
             val calendarInfoList = allCalendars.map { entry ->
@@ -163,11 +157,6 @@ class CalendarSyncWorker(
 
             if (calendarEntry == null) {
                 Timber.w("Calendar '%s' NOT FOUND among %d calendars", calendarName, allCalendars.size)
-                Timber.w("Available calendars (displayName -> summary):")
-                allCalendars.forEach { entry ->
-                    val displayName = entry.summaryOverride ?: entry.summary
-                    Timber.w("  \"%s\" (summary=\"%s\")", displayName, entry.summary)
-                }
 
                 // Notify user and persist error
                 val availableNames = allCalendars.map { it.summaryOverride ?: it.summary ?: "" }
@@ -181,15 +170,14 @@ class CalendarSyncWorker(
             NotificationHelper.dismissCalendarNotFound(applicationContext)
 
             val calendarId = calendarEntry.id
-            val displayName = calendarEntry.summaryOverride ?: calendarEntry.summary
-            Timber.i("Found calendar: \"%s\" -> id=\"%s\"", displayName, calendarId)
+            Timber.i("Target calendar found")
             prefs.calendarId = calendarId
 
             // Fetch events for the next 30 days
             val now = System.currentTimeMillis()
             val endTime = now + TimeUnit.DAYS.toMillis(30)
 
-            Timber.i("Fetching events from %s to %s", DateTime(now), DateTime(endTime))
+            Timber.i("Fetching events for next 30 days")
 
             val events = calendarService.events().list(calendarId)
                 .setTimeMin(DateTime(now))
@@ -199,28 +187,20 @@ class CalendarSyncWorker(
                 .execute()
 
             val rawItems = events.items ?: emptyList()
-            Timber.i("========== EVENTS (%d) ==========", rawItems.size)
-            rawItems.forEachIndexed { index, event ->
-                Timber.i("  [%d] summary=\"%s\", start=%s, end=%s, id=\"%s\"",
-                    index, event.summary,
-                    event.start?.dateTime ?: event.start?.date,
-                    event.end?.dateTime ?: event.end?.date,
-                    event.id)
-            }
-            Timber.i("===============================================")
+            Timber.i("Fetched %d events", rawItems.size)
 
             // Convert to AllowedTimeframe entities
             val timeframes = rawItems.mapNotNull { event ->
                 val start = event.start?.dateTime?.value
                     ?: event.start?.date?.value
                     ?: run {
-                        Timber.w("Skipping event \"%s\": no start time", event.summary)
+                        Timber.w("Skipping event: no start time")
                         return@mapNotNull null
                     }
                 val end = event.end?.dateTime?.value
                     ?: event.end?.date?.value
                     ?: run {
-                        Timber.w("Skipping event \"%s\": no end time", event.summary)
+                        Timber.w("Skipping event: no end time")
                         return@mapNotNull null
                     }
 
@@ -232,10 +212,7 @@ class CalendarSyncWorker(
                 )
             }
 
-            Timber.i("Converted %d events to timeframes:", timeframes.size)
-            timeframes.forEach { tf ->
-                Timber.i("  - \"%s\" from %s to %s", tf.title, DateTime(tf.startTime), DateTime(tf.endTime))
-            }
+            Timber.i("Converted %d events to %d timeframes", rawItems.size, timeframes.size)
 
             // Update the database
             repository.replaceAllTimeframes(timeframes)
@@ -249,14 +226,12 @@ class CalendarSyncWorker(
             prefs.lastSyncTimestamp = System.currentTimeMillis()
             prefs.lastSyncError = null
 
-            Timber.i("========== CALENDAR SYNC COMPLETED ==========")
-            Timber.i("In allowed timeframe: %s", isInTimeframe)
-            Timber.i("Timeframes in DB: %d", timeframes.size)
-            Timber.i("===============================================")
+            Timber.i("Calendar sync completed. In allowed timeframe: %s, timeframes: %d",
+                isInTimeframe, timeframes.size)
             return Result.success()
 
         } catch (e: Exception) {
-            Timber.e(e, "========== CALENDAR SYNC FAILED ==========")
+            Timber.e(e, "Calendar sync failed")
             return Result.retry()
         }
     }
