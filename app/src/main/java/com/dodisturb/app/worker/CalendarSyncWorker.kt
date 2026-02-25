@@ -149,14 +149,14 @@ class CalendarSyncWorker(
             // Match against summaryOverride first (user-defined display name in Google Calendar),
             // then fall back to summary (the original calendar name/URL for imported calendars).
             val calendarName = prefs.calendarName
-            Timber.i("Looking for calendar named: \"%s\"", calendarName)
+            Timber.i("Looking for target calendar among %d calendars", allCalendars.size)
 
             val calendarEntry = allCalendars.find { entry ->
                 (entry.summaryOverride ?: entry.summary).equals(calendarName, ignoreCase = true)
             }
 
             if (calendarEntry == null) {
-                Timber.w("Calendar '%s' NOT FOUND among %d calendars", calendarName, allCalendars.size)
+                Timber.w("Target calendar NOT FOUND among %d calendars", allCalendars.size)
 
                 // Notify user and persist error
                 val availableNames = allCalendars.map { it.summaryOverride ?: it.summary ?: "" }
