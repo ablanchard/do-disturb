@@ -4,14 +4,12 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.ContactsContract
-import android.util.Log
+import timber.log.Timber
 
 /**
  * Helper to check if a phone number exists in the device contacts.
  */
 object ContactsHelper {
-
-    private const val TAG = "ContactsHelper"
 
     /**
      * Checks if the given phone number matches any contact on the device.
@@ -37,13 +35,13 @@ object ContactsHelper {
             if (found) {
                 cursor?.moveToFirst()
                 val name = cursor?.getString(0) ?: "Unknown"
-                Log.d(TAG, "Number $phoneNumber found in contacts: $name")
+                Timber.d("Number %s found in contacts: %s", phoneNumber, name)
             } else {
-                Log.d(TAG, "Number $phoneNumber NOT found in contacts")
+                Timber.d("Number %s NOT found in contacts", phoneNumber)
             }
             found
         } catch (e: Exception) {
-            Log.e(TAG, "Error looking up phone number: $phoneNumber", e)
+            Timber.e(e, "Error looking up phone number: %s", phoneNumber)
             // On error, fail open (allow the call) rather than blocking a potentially valid contact
             true
         } finally {

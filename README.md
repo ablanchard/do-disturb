@@ -37,6 +37,8 @@ _Coming soon_
 | Background Sync | WorkManager (periodic 15-min) |
 | Calendar API | Google Calendar API v3 |
 | Authentication | Google Sign-In (OAuth2) |
+| Crash Reporting | Firebase Crashlytics |
+| Logging | Timber |
 | Call Blocking | Android CallScreeningService |
 | Min SDK | 29 (Android 10) |
 | Target SDK | 34 (Android 14) |
@@ -88,11 +90,18 @@ app/src/main/java/com/dodisturb/app/
 
 3. Sync Gradle and build the project.
 
-4. Create a Google Calendar named `DoDisturb` (or configure a different name in the app).
+4. **Set up Firebase** (required for crash reporting):
+   - Go to the [Firebase Console](https://console.firebase.google.com/)
+   - Create a new project (or use an existing one)
+   - Add an Android app with package name `com.dodisturb.app`
+   - Download the `google-services.json` file and place it in the `app/` directory
+   - Crashlytics will start collecting crash reports and log breadcrumbs automatically
 
-5. Run the app on a device or emulator (API 29+).
+5. Create a Google Calendar named `DoDisturb` (or configure a different name in the app).
 
-6. Follow the setup wizard to grant required permissions.
+6. Run the app on a device or emulator (API 29+).
+
+7. Follow the setup wizard to grant required permissions.
 
 ## Permissions
 

@@ -1,7 +1,6 @@
 package com.dodisturb.app.worker
 
 import android.content.Context
-import android.util.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -24,6 +23,7 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.client.util.DateTime
 import com.google.api.services.calendar.Calendar
 import com.google.api.services.calendar.CalendarScopes
+import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,7 +37,6 @@ class CalendarSyncWorker(
 ) : CoroutineWorker(context, params) {
 
     companion object {
-        private const val TAG = "CalendarSyncWorker"
         private const val WORK_NAME = "calendar_sync"
         private const val WORK_NAME_ONCE = "calendar_sync_once"
 
@@ -62,14 +61,14 @@ class CalendarSyncWorker(
                     workRequest
                 )
 
-            Log.d(TAG, "Calendar sync worker enqueued (every 15 minutes)")
+            Timber.d("Calendar sync worker enqueued (every 15 minutes)")
         }
 
         /**
          * Triggers an immediate one-time sync (for manual refresh).
          */
         fun syncNow(context: Context) {
-            Log.d(TAG, ">>> Manual sync requested, enqueuing one-time work")
+            Timber.d("Manual sync requested, enqueuing one-time work")
 
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -82,7 +81,7 @@ class CalendarSyncWorker(
             WorkManager.getInstance(context)
                 .enqueue(workRequest)
 
-            Log.d(TAG, ">>> One-time sync work enqueued")
+            Timber.d("One-time sync work enqueued")
         }
 
         /**
@@ -90,12 +89,12 @@ class CalendarSyncWorker(
          */
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
-            Log.d(TAG, "Calendar sync worker cancelled")
+            Timber.d("Calendar sync worker cancelled")
         }
     }
 
     override suspend fun doWork(): Result {
-        Log.i(TAG, "========== CALENDAR SYNC STARTED ==========")
+        Timber.i("========== CALENDAR SYNC STARTED ==========")
 
         val prefs = PreferencesManager(applicationContext)
         val db = AppDatabase.getInstance(applicationContext)
@@ -106,11 +105,11 @@ class CalendarSyncWorker(
             // Check if we have a signed-in Google account
             val account = GoogleSignIn.getLastSignedInAccount(applicationContext)
             if (account == null) {
-                Log.w(TAG, "No Google account signed in, skipping sync")
+                Timber.w("No Google account signed in, skipping sync")
                 return Result.retry()
             }
-            Log.i(TAG, "Google account: ${account.email}")
-            Log.i(TAG, "Account object: ${account.account}")
+            Timber.i("Google account: %s", account.email)
+            Timber.i("Account object: %s", account.account)
 
             // Build the Google Calendar service
             val credential = GoogleAccountCredential.usingOAuth2(
@@ -118,7 +117,7 @@ class CalendarSyncWorker(
                 listOf(CalendarScopes.CALENDAR_READONLY)
             )
             credential.selectedAccount = account.account
-            Log.i(TAG, "Credential created, selectedAccount: ${credential.selectedAccount}")
+            Timber.i("Credential created, selectedAccount: %s", credential.selectedAccount)
 
             val calendarService = Calendar.Builder(
                 NetHttpTransport(),
@@ -128,19 +127,18 @@ class CalendarSyncWorker(
                 .setApplicationName("DoDisturb")
                 .build()
 
-            Log.i(TAG, "Calendar service built, fetching calendar list...")
+            Timber.i("Calendar service built, fetching calendar list...")
 
             // List ALL calendars for debugging
             val calendarList = calendarService.calendarList().list().execute()
             val allCalendars = calendarList.items ?: emptyList()
 
-            Log.i(TAG, "========== ALL CALENDARS (${allCalendars.size}) ==========")
+            Timber.i("========== ALL CALENDARS (%d) ==========", allCalendars.size)
             allCalendars.forEachIndexed { index, entry ->
-                Log.i(TAG, "  [$index] summary=\"${entry.summary}\", " +
-                        "summaryOverride=\"${entry.summaryOverride}\", " +
-                        "id=\"${entry.id}\", accessRole=\"${entry.accessRole}\"")
+                Timber.i("  [%d] summary=\"%s\", summaryOverride=\"%s\", id=\"%s\", accessRole=\"%s\"",
+                    index, entry.summary, entry.summaryOverride, entry.id, entry.accessRole)
             }
-            Log.i(TAG, "==============================================")
+            Timber.i("==============================================")
 
             // Persist the available calendars list for the debug screen
             val calendarInfoList = allCalendars.map { entry ->
@@ -157,18 +155,18 @@ class CalendarSyncWorker(
             // Match against summaryOverride first (user-defined display name in Google Calendar),
             // then fall back to summary (the original calendar name/URL for imported calendars).
             val calendarName = prefs.calendarName
-            Log.i(TAG, "Looking for calendar named: \"$calendarName\"")
+            Timber.i("Looking for calendar named: \"%s\"", calendarName)
 
             val calendarEntry = allCalendars.find { entry ->
                 (entry.summaryOverride ?: entry.summary).equals(calendarName, ignoreCase = true)
             }
 
             if (calendarEntry == null) {
-                Log.w(TAG, "Calendar '$calendarName' NOT FOUND among ${allCalendars.size} calendars")
-                Log.w(TAG, "Available calendars (displayName -> summary):")
+                Timber.w("Calendar '%s' NOT FOUND among %d calendars", calendarName, allCalendars.size)
+                Timber.w("Available calendars (displayName -> summary):")
                 allCalendars.forEach { entry ->
                     val displayName = entry.summaryOverride ?: entry.summary
-                    Log.w(TAG, "  \"$displayName\" (summary=\"${entry.summary}\")")
+                    Timber.w("  \"%s\" (summary=\"%s\")", displayName, entry.summary)
                 }
 
                 // Notify user and persist error
@@ -184,14 +182,14 @@ class CalendarSyncWorker(
 
             val calendarId = calendarEntry.id
             val displayName = calendarEntry.summaryOverride ?: calendarEntry.summary
-            Log.i(TAG, "Found calendar: \"$displayName\" -> id=\"$calendarId\"")
+            Timber.i("Found calendar: \"%s\" -> id=\"%s\"", displayName, calendarId)
             prefs.calendarId = calendarId
 
             // Fetch events for the next 30 days
             val now = System.currentTimeMillis()
             val endTime = now + TimeUnit.DAYS.toMillis(30)
 
-            Log.i(TAG, "Fetching events from ${DateTime(now)} to ${DateTime(endTime)}")
+            Timber.i("Fetching events from %s to %s", DateTime(now), DateTime(endTime))
 
             val events = calendarService.events().list(calendarId)
                 .setTimeMin(DateTime(now))
@@ -201,27 +199,28 @@ class CalendarSyncWorker(
                 .execute()
 
             val rawItems = events.items ?: emptyList()
-            Log.i(TAG, "========== EVENTS (${rawItems.size}) ==========")
+            Timber.i("========== EVENTS (%d) ==========", rawItems.size)
             rawItems.forEachIndexed { index, event ->
-                Log.i(TAG, "  [$index] summary=\"${event.summary}\", " +
-                        "start=${event.start?.dateTime ?: event.start?.date}, " +
-                        "end=${event.end?.dateTime ?: event.end?.date}, " +
-                        "id=\"${event.id}\"")
+                Timber.i("  [%d] summary=\"%s\", start=%s, end=%s, id=\"%s\"",
+                    index, event.summary,
+                    event.start?.dateTime ?: event.start?.date,
+                    event.end?.dateTime ?: event.end?.date,
+                    event.id)
             }
-            Log.i(TAG, "===============================================")
+            Timber.i("===============================================")
 
             // Convert to AllowedTimeframe entities
             val timeframes = rawItems.mapNotNull { event ->
                 val start = event.start?.dateTime?.value
                     ?: event.start?.date?.value
                     ?: run {
-                        Log.w(TAG, "  Skipping event \"${event.summary}\": no start time")
+                        Timber.w("Skipping event \"%s\": no start time", event.summary)
                         return@mapNotNull null
                     }
                 val end = event.end?.dateTime?.value
                     ?: event.end?.date?.value
                     ?: run {
-                        Log.w(TAG, "  Skipping event \"${event.summary}\": no end time")
+                        Timber.w("Skipping event \"%s\": no end time", event.summary)
                         return@mapNotNull null
                     }
 
@@ -233,15 +232,15 @@ class CalendarSyncWorker(
                 )
             }
 
-            Log.i(TAG, "Converted ${timeframes.size} events to timeframes:")
+            Timber.i("Converted %d events to timeframes:", timeframes.size)
             timeframes.forEach { tf ->
-                Log.i(TAG, "  - \"${tf.title}\" from ${DateTime(tf.startTime)} to ${DateTime(tf.endTime)}")
+                Timber.i("  - \"%s\" from %s to %s", tf.title, DateTime(tf.startTime), DateTime(tf.endTime))
             }
 
             // Update the database
             repository.replaceAllTimeframes(timeframes)
             repository.cleanupExpired()
-            Log.i(TAG, "Database updated")
+            Timber.i("Database updated")
 
             // Update DND state
             val isInTimeframe = repository.isInAllowedTimeframe()
@@ -250,16 +249,14 @@ class CalendarSyncWorker(
             prefs.lastSyncTimestamp = System.currentTimeMillis()
             prefs.lastSyncError = null
 
-            Log.i(TAG, "========== CALENDAR SYNC COMPLETED ==========")
-            Log.i(TAG, "In allowed timeframe: $isInTimeframe")
-            Log.i(TAG, "Timeframes in DB: ${timeframes.size}")
-            Log.i(TAG, "===============================================")
+            Timber.i("========== CALENDAR SYNC COMPLETED ==========")
+            Timber.i("In allowed timeframe: %s", isInTimeframe)
+            Timber.i("Timeframes in DB: %d", timeframes.size)
+            Timber.i("===============================================")
             return Result.success()
 
         } catch (e: Exception) {
-            Log.e(TAG, "========== CALENDAR SYNC FAILED ==========")
-            Log.e(TAG, "Error: ${e.message}", e)
-            Log.e(TAG, "===========================================")
+            Timber.e(e, "========== CALENDAR SYNC FAILED ==========")
             return Result.retry()
         }
     }

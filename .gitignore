@@ -9,3 +9,17 @@
 .cxx
 local.properties
 /app/build
+
+# Firebase config (contains project-specific keys)
+google-services.json
+
+# Signing
+*.jks
+*.keystore
+*.p12
+*.pem
+signing.properties
+keystore.properties
+
+# Environment files
+.env*

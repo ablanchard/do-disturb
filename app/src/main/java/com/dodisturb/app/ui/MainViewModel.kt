@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -31,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 data class AppUiState(
     // Setup state
@@ -62,10 +62,6 @@ data class AppUiState(
 )
 
 class MainViewModel(private val context: Context) : ViewModel() {
-
-    companion object {
-        private const val TAG = "MainViewModel"
-    }
 
     private val prefs = PreferencesManager(context)
     private val dndManager = DndManager(context)
@@ -178,14 +174,14 @@ class MainViewModel(private val context: Context) : ViewModel() {
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
             prefs.googleAccountEmail = account.email
-            Log.d(TAG, "Google sign-in successful: ${account.email}")
+            Timber.d("Google sign-in successful: %s", account.email)
 
             // Start the sync worker after sign-in
             CalendarSyncWorker.enqueue(context)
 
             refreshState()
         } catch (e: ApiException) {
-            Log.e(TAG, "Google sign-in failed: ${e.statusCode}", e)
+            Timber.e(e, "Google sign-in failed: %d", e.statusCode)
         }
     }
 
@@ -200,7 +196,7 @@ class MainViewModel(private val context: Context) : ViewModel() {
     }
 
     fun triggerManualSync() {
-        Log.d(TAG, "Manual sync triggered by user")
+        Timber.d("Manual sync triggered by user")
         _uiState.value = _uiState.value.copy(isSyncing = true, syncError = null)
         CalendarSyncWorker.syncNow(context)
 
@@ -223,7 +219,7 @@ class MainViewModel(private val context: Context) : ViewModel() {
             val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
             roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
         } catch (e: Exception) {
-            Log.e(TAG, "Error creating role request intent", e)
+            Timber.e(e, "Error creating role request intent")
             null
         }
     }

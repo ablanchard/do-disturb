@@ -4,8 +4,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.util.Log
 import com.dodisturb.app.data.repository.PreferencesManager
+import timber.log.Timber
 
 /**
  * Manages Do Not Disturb mode programmatically.
@@ -17,10 +17,6 @@ class DndManager(private val context: Context) {
     private val notificationManager: NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val prefs = PreferencesManager(context)
-
-    companion object {
-        private const val TAG = "DndManager"
-    }
 
     /**
      * Checks if the app has permission to modify DND settings.
@@ -49,7 +45,7 @@ class DndManager(private val context: Context) {
      */
     fun disableDnd() {
         if (!hasNotificationPolicyAccess()) {
-            Log.w(TAG, "No notification policy access, cannot disable DND")
+            Timber.w("No notification policy access, cannot disable DND")
             return
         }
 
@@ -57,12 +53,12 @@ class DndManager(private val context: Context) {
 
         // Only save and change if DND is currently active (not already ALL)
         if (currentFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
-            Log.d(TAG, "Disabling DND. Previous filter: $currentFilter")
+            Timber.d("Disabling DND. Previous filter: %d", currentFilter)
             prefs.previousInterruptionFilter = currentFilter
             prefs.isDndManagedByApp = true
             notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
         } else {
-            Log.d(TAG, "DND already disabled (filter is ALL)")
+            Timber.d("DND already disabled (filter is ALL)")
             // Still mark as managed so we know we're in an active timeframe
             prefs.isDndManagedByApp = true
         }
@@ -73,21 +69,21 @@ class DndManager(private val context: Context) {
      */
     fun restoreDnd() {
         if (!hasNotificationPolicyAccess()) {
-            Log.w(TAG, "No notification policy access, cannot restore DND")
+            Timber.w("No notification policy access, cannot restore DND")
             return
         }
 
         if (!prefs.isDndManagedByApp) {
-            Log.d(TAG, "DND was not managed by app, nothing to restore")
+            Timber.d("DND was not managed by app, nothing to restore")
             return
         }
 
         val previousFilter = prefs.previousInterruptionFilter
         if (previousFilter != -1 && previousFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
-            Log.d(TAG, "Restoring DND to previous filter: $previousFilter")
+            Timber.d("Restoring DND to previous filter: %d", previousFilter)
             notificationManager.setInterruptionFilter(previousFilter)
         } else {
-            Log.d(TAG, "No previous DND state to restore (was already ALL or not set)")
+            Timber.d("No previous DND state to restore (was already ALL or not set)")
         }
 
         prefs.isDndManagedByApp = false

@@ -3,13 +3,13 @@ package com.dodisturb.app.service
 import android.net.Uri
 import android.telecom.Call
 import android.telecom.CallScreeningService
-import android.util.Log
 import com.dodisturb.app.data.db.AppDatabase
 import com.dodisturb.app.data.model.BlockedCallInfo
 import com.dodisturb.app.data.repository.PreferencesManager
 import com.dodisturb.app.data.repository.TimeframeRepository
 import com.dodisturb.app.util.ContactsHelper
 import com.dodisturb.app.util.NotificationHelper
+import timber.log.Timber
 
 /**
  * Call screening service that blocks incoming calls from numbers
@@ -21,21 +21,17 @@ import com.dodisturb.app.util.NotificationHelper
  */
 class DoDisturbCallScreeningService : CallScreeningService() {
 
-    companion object {
-        private const val TAG = "CallScreeningService"
-    }
-
     override fun onScreenCall(callDetails: Call.Details) {
         val handle: Uri? = callDetails.handle
         val phoneNumber = handle?.schemeSpecificPart ?: ""
 
-        Log.d(TAG, "Screening call from: $phoneNumber")
+        Timber.d("Screening call from: %s", phoneNumber)
 
         val prefs = PreferencesManager(this)
 
         // If blocking is disabled in settings, allow all calls
         if (!prefs.isBlockingEnabled) {
-            Log.d(TAG, "Blocking is disabled, allowing call")
+            Timber.d("Blocking is disabled, allowing call")
             allowCall(callDetails)
             return
         }
@@ -44,20 +40,20 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         val db = AppDatabase.getInstance(this)
         val repository = TimeframeRepository(db.timeframeDao())
         if (repository.isInAllowedTimeframeSync()) {
-            Log.d(TAG, "In allowed timeframe, allowing call from $phoneNumber")
+            Timber.d("In allowed timeframe, allowing call from %s", phoneNumber)
             allowCall(callDetails)
             return
         }
 
         // Check if the number is in contacts
         if (phoneNumber.isNotEmpty() && ContactsHelper.isNumberInContacts(this, phoneNumber)) {
-            Log.d(TAG, "Number $phoneNumber is in contacts, allowing call")
+            Timber.d("Number %s is in contacts, allowing call", phoneNumber)
             allowCall(callDetails)
             return
         }
 
         // Number is not in contacts and we're not in an allowed timeframe -> block
-        Log.d(TAG, "Blocking call from $phoneNumber (not in contacts, not in allowed timeframe)")
+        Timber.d("Blocking call from %s (not in contacts, not in allowed timeframe)", phoneNumber)
 
         // Persist the blocked call to the database
         val blockedCall = BlockedCallInfo(
@@ -67,7 +63,7 @@ class DoDisturbCallScreeningService : CallScreeningService() {
         )
         try {
             val rowId = db.blockedCallDao().insertSync(blockedCall)
-            Log.d(TAG, "Saved blocked call to DB, id=$rowId")
+            Timber.d("Saved blocked call to DB, id=%d", rowId)
 
             // Send a notification (use rowId as unique notification id)
             NotificationHelper.notifyBlockedCall(
@@ -76,7 +72,7 @@ class DoDisturbCallScreeningService : CallScreeningService() {
                 notificationId = rowId.toInt()
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save blocked call or send notification", e)
+            Timber.e(e, "Failed to save blocked call or send notification")
         }
 
         blockCall(callDetails)
