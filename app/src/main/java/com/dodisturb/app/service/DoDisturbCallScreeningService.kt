@@ -1,0 +1,106 @@
+package com.dodisturb.app.service
+
+import android.net.Uri
+import android.telecom.Call
+import android.telecom.CallScreeningService
+import android.util.Log
+import com.dodisturb.app.data.db.AppDatabase
+import com.dodisturb.app.data.model.BlockedCallInfo
+import com.dodisturb.app.data.repository.PreferencesManager
+import com.dodisturb.app.data.repository.TimeframeRepository
+import com.dodisturb.app.util.ContactsHelper
+import com.dodisturb.app.util.NotificationHelper
+
+/**
+ * Call screening service that blocks incoming calls from numbers
+ * not in the user's contact list, unless we're in an allowed timeframe
+ * (as defined by events in the configured Google Calendar).
+ *
+ * When a call is blocked, the event is persisted to the local database
+ * and a notification is posted.
+ */
+class DoDisturbCallScreeningService : CallScreeningService() {
+
+    companion object {
+        private const val TAG = "CallScreeningService"
+    }
+
+    override fun onScreenCall(callDetails: Call.Details) {
+        val handle: Uri? = callDetails.handle
+        val phoneNumber = handle?.schemeSpecificPart ?: ""
+
+        Log.d(TAG, "Screening call from: $phoneNumber")
+
+        val prefs = PreferencesManager(this)
+
+        // If blocking is disabled in settings, allow all calls
+        if (!prefs.isBlockingEnabled) {
+            Log.d(TAG, "Blocking is disabled, allowing call")
+            allowCall(callDetails)
+            return
+        }
+
+        // Check if we're in an allowed timeframe
+        val db = AppDatabase.getInstance(this)
+        val repository = TimeframeRepository(db.timeframeDao())
+        if (repository.isInAllowedTimeframeSync()) {
+            Log.d(TAG, "In allowed timeframe, allowing call from $phoneNumber")
+            allowCall(callDetails)
+            return
+        }
+
+        // Check if the number is in contacts
+        if (phoneNumber.isNotEmpty() && ContactsHelper.isNumberInContacts(this, phoneNumber)) {
+            Log.d(TAG, "Number $phoneNumber is in contacts, allowing call")
+            allowCall(callDetails)
+            return
+        }
+
+        // Number is not in contacts and we're not in an allowed timeframe -> block
+        Log.d(TAG, "Blocking call from $phoneNumber (not in contacts, not in allowed timeframe)")
+
+        // Persist the blocked call to the database
+        val blockedCall = BlockedCallInfo(
+            phoneNumber = phoneNumber,
+            timestamp = System.currentTimeMillis(),
+            reason = "not_in_contacts"
+        )
+        try {
+            val rowId = db.blockedCallDao().insertSync(blockedCall)
+            Log.d(TAG, "Saved blocked call to DB, id=$rowId")
+
+            // Send a notification (use rowId as unique notification id)
+            NotificationHelper.notifyBlockedCall(
+                context = this,
+                phoneNumber = phoneNumber,
+                notificationId = rowId.toInt()
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save blocked call or send notification", e)
+        }
+
+        blockCall(callDetails)
+    }
+
+    private fun allowCall(callDetails: Call.Details) {
+        val response = CallResponse.Builder()
+            .setDisallowCall(false)
+            .setRejectCall(false)
+            .setSilenceCall(false)
+            .setSkipCallLog(false)
+            .setSkipNotification(false)
+            .build()
+        respondToCall(callDetails, response)
+    }
+
+    private fun blockCall(callDetails: Call.Details) {
+        val response = CallResponse.Builder()
+            .setDisallowCall(true)
+            .setRejectCall(true)
+            .setSilenceCall(true)
+            .setSkipCallLog(false)      // Still show in system call log
+            .setSkipNotification(true)  // Don't show system missed-call notification
+            .build()
+        respondToCall(callDetails, response)
+    }
+}
