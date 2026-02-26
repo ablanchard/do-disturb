@@ -1,5 +1,11 @@
 package com.dodisturb.app.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -181,8 +188,10 @@ fun CallLogScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BlockedCallItem(blockedCall: BlockedCallInfo) {
+    val context = LocalContext.current
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     val displayNumber = if (blockedCall.phoneNumber.isNotEmpty()) {
         blockedCall.phoneNumber
@@ -193,6 +202,17 @@ private fun BlockedCallItem(blockedCall: BlockedCallInfo) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .combinedClickable(
+                onClick = { },
+                onLongClick = {
+                    if (blockedCall.phoneNumber.isNotEmpty()) {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("Phone number", blockedCall.phoneNumber)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Number copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
