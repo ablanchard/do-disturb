@@ -59,10 +59,10 @@ fun SetupScreen(
         viewModel.refreshState()
     }
 
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        viewModel.handleGoogleSignInResult(result)
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        viewModel.refreshState()
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -132,18 +132,18 @@ fun SetupScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Step 3: Google Sign-In
+        // Step 3: Calendar Permission
         SetupStepCard(
             stepNumber = 3,
-            title = "Google Calendar",
-            description = if (uiState.isGoogleSignedIn) {
-                "Signed in as ${uiState.googleAccountEmail}"
+            title = "Calendar Access",
+            description = if (uiState.hasCalendarPermission) {
+                "Calendar access granted."
             } else {
-                "Sign in to sync your calendar events."
+                "Read your calendar to find allowed timeframes."
             },
-            isCompleted = uiState.isGoogleSignedIn,
+            isCompleted = uiState.hasCalendarPermission,
             onAction = {
-                googleSignInLauncher.launch(viewModel.googleSignInClient.signInIntent)
+                calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
             }
         )
 

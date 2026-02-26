@@ -38,12 +38,12 @@ fun DebugScreen(
         // Header
         item {
             Text(
-                text = "Available Google Calendars",
+                text = "Available Calendars",
                 style = MaterialTheme.typography.titleLarge
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Found ${calendars.size} calendar(s) on the signed-in account.",
+                text = "Found ${calendars.size} calendar(s) on the device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -220,7 +220,7 @@ private fun CalendarSettingsCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Google Calendar",
+                    text = "Calendar",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )

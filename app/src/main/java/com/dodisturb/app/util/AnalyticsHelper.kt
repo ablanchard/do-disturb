@@ -72,14 +72,4 @@ object AnalyticsHelper {
     fun logManualSyncTriggered() {
         analytics.logEvent("manual_sync_triggered", null)
     }
-
-    fun logSignInCompleted() {
-        analytics.logEvent("sign_in_completed", null)
-    }
-
-    fun logSignInFailed(statusCode: Int) {
-        analytics.logEvent("sign_in_failed", Bundle().apply {
-            putInt("status_code", statusCode)
-        })
-    }
 }

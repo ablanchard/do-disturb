@@ -1,10 +1,11 @@
 package com.dodisturb.app.worker
 
+import android.content.ContentUris
 import android.content.Context
+import android.provider.CalendarContract
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -17,19 +18,13 @@ import com.dodisturb.app.data.repository.TimeframeRepository
 import com.dodisturb.app.util.AnalyticsHelper
 import com.dodisturb.app.util.DndManager
 import com.dodisturb.app.util.NotificationHelper
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
-import com.google.api.client.http.javanet.NetHttpTransport
-import com.google.api.client.json.gson.GsonFactory
-import com.google.api.client.util.DateTime
-import com.google.api.services.calendar.Calendar
-import com.google.api.services.calendar.CalendarScopes
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
 /**
- * Periodic worker that syncs events from the configured Google Calendar
- * and updates the allowed timeframes in the local database.
+ * Periodic worker that syncs events from the configured calendar
+ * using Android's CalendarContract Content Provider and updates
+ * the allowed timeframes in the local database.
  * Also manages DND state based on whether we're in an allowed timeframe.
  */
 class CalendarSyncWorker(
@@ -45,15 +40,9 @@ class CalendarSyncWorker(
          * Enqueues the periodic sync worker (every 15 minutes).
          */
         fun enqueue(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
             val workRequest = PeriodicWorkRequestBuilder<CalendarSyncWorker>(
                 15, TimeUnit.MINUTES
-            )
-                .setConstraints(constraints)
-                .build()
+            ).build()
 
             WorkManager.getInstance(context)
                 .enqueueUniquePeriodicWork(
@@ -71,12 +60,7 @@ class CalendarSyncWorker(
         fun syncNow(context: Context) {
             Timber.d("Manual sync requested, enqueuing one-time work")
 
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
             val workRequest = OneTimeWorkRequestBuilder<CalendarSyncWorker>()
-                .setConstraints(constraints)
                 .build()
 
             WorkManager.getInstance(context)
@@ -104,57 +88,22 @@ class CalendarSyncWorker(
         val dndManager = DndManager(applicationContext)
 
         try {
-            // Check if we have a signed-in Google account
-            val account = GoogleSignIn.getLastSignedInAccount(applicationContext)
-            if (account == null) {
-                Timber.w("No Google account signed in, skipping sync")
-                return Result.retry()
-            }
-            Timber.i("Google account available, starting sync")
-
-            // Build the Google Calendar service
-            val credential = GoogleAccountCredential.usingOAuth2(
-                applicationContext,
-                listOf(CalendarScopes.CALENDAR_READONLY)
-            )
-            credential.selectedAccount = account.account
-            Timber.i("Credential created successfully")
-
-            val calendarService = Calendar.Builder(
-                NetHttpTransport(),
-                GsonFactory.getDefaultInstance(),
-                credential
-            )
-                .setApplicationName("DoDisturb")
-                .build()
-
-            Timber.i("Calendar service built, fetching calendar list...")
-
-            // List ALL calendars for debugging
-            val calendarList = calendarService.calendarList().list().execute()
-            val allCalendars = calendarList.items ?: emptyList()
-
-            Timber.i("Found %d calendars", allCalendars.size)
+            // List ALL calendars from the device via CalendarContract
+            val allCalendars = queryAllCalendars()
+            Timber.i("Found %d calendars on device", allCalendars.size)
 
             // Persist the available calendars list for the debug screen
-            val calendarInfoList = allCalendars.map { entry ->
-                CalendarInfo(
-                    summary = entry.summary ?: "",
-                    summaryOverride = entry.summaryOverride,
-                    id = entry.id ?: "",
-                    accessRole = entry.accessRole ?: ""
-                )
-            }
-            prefs.setAvailableCalendars(calendarInfoList)
+            prefs.setAvailableCalendars(allCalendars)
 
             // Find the calendar by name
-            // Match against summaryOverride first (user-defined display name in Google Calendar),
-            // then fall back to summary (the original calendar name/URL for imported calendars).
+            // Match against displayName (which is summaryOverride equivalent),
+            // then fall back to summary (the account calendar name).
             val calendarName = prefs.calendarName
             Timber.i("Looking for target calendar among %d calendars", allCalendars.size)
 
             val calendarEntry = allCalendars.find { entry ->
-                (entry.summaryOverride ?: entry.summary).equals(calendarName, ignoreCase = true)
+                val displayName = entry.summaryOverride ?: entry.summary
+                displayName.equals(calendarName, ignoreCase = true)
             }
 
             if (calendarEntry == null) {
@@ -162,7 +111,7 @@ class CalendarSyncWorker(
                 AnalyticsHelper.logCalendarNotFound()
 
                 // Notify user and persist error
-                val availableNames = allCalendars.map { it.summaryOverride ?: it.summary ?: "" }
+                val availableNames = allCalendars.map { it.summaryOverride ?: it.summary }
                 NotificationHelper.notifyCalendarNotFound(applicationContext, calendarName, availableNames)
                 prefs.lastSyncError = "Calendar \"$calendarName\" not found"
 
@@ -176,46 +125,14 @@ class CalendarSyncWorker(
             Timber.i("Target calendar found")
             prefs.calendarId = calendarId
 
-            // Fetch events for the next 30 days
+            // Fetch events for the next 30 days via CalendarContract
             val now = System.currentTimeMillis()
             val endTime = now + TimeUnit.DAYS.toMillis(30)
 
             Timber.i("Fetching events for next 30 days")
 
-            val events = calendarService.events().list(calendarId)
-                .setTimeMin(DateTime(now))
-                .setTimeMax(DateTime(endTime))
-                .setSingleEvents(true)
-                .setOrderBy("startTime")
-                .execute()
-
-            val rawItems = events.items ?: emptyList()
-            Timber.i("Fetched %d events", rawItems.size)
-
-            // Convert to AllowedTimeframe entities
-            val timeframes = rawItems.mapNotNull { event ->
-                val start = event.start?.dateTime?.value
-                    ?: event.start?.date?.value
-                    ?: run {
-                        Timber.w("Skipping event: no start time")
-                        return@mapNotNull null
-                    }
-                val end = event.end?.dateTime?.value
-                    ?: event.end?.date?.value
-                    ?: run {
-                        Timber.w("Skipping event: no end time")
-                        return@mapNotNull null
-                    }
-
-                AllowedTimeframe(
-                    calendarEventId = event.id ?: "",
-                    title = event.summary ?: "Untitled",
-                    startTime = start,
-                    endTime = end
-                )
-            }
-
-            Timber.i("Converted %d events to %d timeframes", rawItems.size, timeframes.size)
+            val timeframes = queryEvents(calendarId.toLong(), now, endTime)
+            Timber.i("Fetched %d events / timeframes", timeframes.size)
 
             // Update the database
             repository.replaceAllTimeframes(timeframes)
@@ -239,5 +156,104 @@ class CalendarSyncWorker(
             AnalyticsHelper.logSyncFailed(e.javaClass.simpleName)
             return Result.retry()
         }
+    }
+
+    /**
+     * Query all calendars on the device using CalendarContract.
+     */
+    private fun queryAllCalendars(): List<CalendarInfo> {
+        val calendars = mutableListOf<CalendarInfo>()
+
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.OWNER_ACCOUNT
+        )
+
+        applicationContext.contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            null,
+            null,
+            CalendarContract.Calendars.ACCOUNT_NAME
+        )?.use { cursor ->
+            val idIdx = cursor.getColumnIndex(CalendarContract.Calendars._ID)
+            val displayNameIdx = cursor.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME)
+            val accountNameIdx = cursor.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idIdx)
+                val displayName = cursor.getString(displayNameIdx) ?: ""
+                val accountName = cursor.getString(accountNameIdx) ?: ""
+
+                calendars.add(
+                    CalendarInfo(
+                        summary = displayName,
+                        summaryOverride = null,
+                        id = id.toString(),
+                        accessRole = accountName
+                    )
+                )
+            }
+        }
+
+        return calendars
+    }
+
+    /**
+     * Query events from a specific calendar within a time range using CalendarContract.
+     * Uses the Instances table to automatically expand recurring events.
+     */
+    private fun queryEvents(calendarId: Long, startMillis: Long, endMillis: Long): List<AllowedTimeframe> {
+        val timeframes = mutableListOf<AllowedTimeframe>()
+
+        val projection = arrayOf(
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END
+        )
+
+        val selection = "${CalendarContract.Instances.CALENDAR_ID} = ?"
+        val selectionArgs = arrayOf(calendarId.toString())
+
+        // Use Instances.query to get expanded recurring events
+        val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
+        ContentUris.appendId(builder, startMillis)
+        ContentUris.appendId(builder, endMillis)
+
+        applicationContext.contentResolver.query(
+            builder.build(),
+            projection,
+            selection,
+            selectionArgs,
+            "${CalendarContract.Instances.BEGIN} ASC"
+        )?.use { cursor ->
+            val eventIdIdx = cursor.getColumnIndex(CalendarContract.Instances.EVENT_ID)
+            val titleIdx = cursor.getColumnIndex(CalendarContract.Instances.TITLE)
+            val beginIdx = cursor.getColumnIndex(CalendarContract.Instances.BEGIN)
+            val endIdx = cursor.getColumnIndex(CalendarContract.Instances.END)
+
+            while (cursor.moveToNext()) {
+                val eventId = cursor.getLong(eventIdIdx)
+                val title = cursor.getString(titleIdx) ?: "Untitled"
+                val begin = cursor.getLong(beginIdx)
+                val end = cursor.getLong(endIdx)
+
+                if (begin > 0 && end > 0) {
+                    timeframes.add(
+                        AllowedTimeframe(
+                            calendarEventId = eventId.toString(),
+                            title = title,
+                            startTime = begin,
+                            endTime = end
+                        )
+                    )
+                }
+            }
+        }
+
+        return timeframes
     }
 }

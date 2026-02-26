@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -20,13 +19,6 @@ import com.dodisturb.app.data.repository.TimeframeRepository
 import com.dodisturb.app.util.AnalyticsHelper
 import com.dodisturb.app.util.DndManager
 import com.dodisturb.app.worker.CalendarSyncWorker
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.Scope
-import com.google.api.services.calendar.CalendarScopes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,8 +31,7 @@ data class AppUiState(
     val hasDndPermission: Boolean = false,
     val hasCallScreeningRole: Boolean = false,
     val hasNotificationPermission: Boolean = false,
-    val isGoogleSignedIn: Boolean = false,
-    val googleAccountEmail: String? = null,
+    val hasCalendarPermission: Boolean = false,
     val isSetupComplete: Boolean = false,
 
     // Home state
@@ -73,14 +64,6 @@ class MainViewModel(private val context: Context) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
-    val googleSignInClient: GoogleSignInClient by lazy {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestScopes(Scope(CalendarScopes.CALENDAR_READONLY))
-            .build()
-        GoogleSignIn.getClient(context, gso)
-    }
-
     init {
         refreshState()
         observeTimeframes()
@@ -109,18 +92,18 @@ class MainViewModel(private val context: Context) : ViewModel() {
             true // Not needed before Android 13
         }
 
-        val googleAccount = GoogleSignIn.getLastSignedInAccount(context)
-        val isSignedIn = googleAccount != null
+        val hasCalendar = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_CALENDAR
+        ) == PackageManager.PERMISSION_GRANTED
 
-        val isSetup = hasContacts && hasDnd && hasRole && isSignedIn
+        val isSetup = hasContacts && hasDnd && hasRole && hasCalendar
 
         _uiState.value = _uiState.value.copy(
             hasContactsPermission = hasContacts,
             hasDndPermission = hasDnd,
             hasCallScreeningRole = hasRole,
             hasNotificationPermission = hasNotification,
-            isGoogleSignedIn = isSignedIn,
-            googleAccountEmail = googleAccount?.email ?: prefs.googleAccountEmail,
+            hasCalendarPermission = hasCalendar,
             isSetupComplete = isSetup,
             isBlockingEnabled = prefs.isBlockingEnabled,
             calendarName = prefs.calendarName,
@@ -167,24 +150,6 @@ class MainViewModel(private val context: Context) : ViewModel() {
     fun clearBlockedCalls() {
         viewModelScope.launch {
             blockedCallDao.deleteAll()
-        }
-    }
-
-    fun handleGoogleSignInResult(result: ActivityResult) {
-        try {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
-            prefs.googleAccountEmail = account.email
-            Timber.d("Google sign-in successful")
-            AnalyticsHelper.logSignInCompleted()
-
-            // Start the sync worker after sign-in
-            CalendarSyncWorker.enqueue(context)
-
-            refreshState()
-        } catch (e: ApiException) {
-            Timber.e(e, "Google sign-in failed with status code: %d", e.statusCode)
-            AnalyticsHelper.logSignInFailed(e.statusCode)
         }
     }
 

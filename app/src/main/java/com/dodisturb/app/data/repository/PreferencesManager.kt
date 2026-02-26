@@ -22,18 +22,11 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit { putString(KEY_CALENDAR_NAME, value) }
 
     /**
-     * The Google Calendar ID (resolved from the calendar name during sync).
+     * The calendar ID (resolved from the calendar name during sync).
      */
     var calendarId: String?
         get() = prefs.getString(KEY_CALENDAR_ID, null)
         set(value) = prefs.edit { putString(KEY_CALENDAR_ID, value) }
-
-    /**
-     * The Google account email used for Calendar API.
-     */
-    var googleAccountEmail: String?
-        get() = prefs.getString(KEY_GOOGLE_ACCOUNT, null)
-        set(value) = prefs.edit { putString(KEY_GOOGLE_ACCOUNT, value) }
 
     /**
      * Whether the app is actively blocking calls.
@@ -114,7 +107,6 @@ class PreferencesManager(context: Context) {
         private const val PREFS_NAME = "dodisturb_prefs"
         private const val KEY_CALENDAR_NAME = "calendar_name"
         private const val KEY_CALENDAR_ID = "calendar_id"
-        private const val KEY_GOOGLE_ACCOUNT = "google_account"
         private const val KEY_BLOCKING_ENABLED = "blocking_enabled"
         private const val KEY_LAST_SYNC = "last_sync"
         private const val KEY_PREV_INTERRUPTION_FILTER = "prev_interruption_filter"
