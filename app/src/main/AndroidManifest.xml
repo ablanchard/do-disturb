@@ -2,8 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network for Google Calendar API -->
+    <!-- Network for Firebase -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Read calendar events to find allowed timeframes -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <!-- Read contacts to check if caller is in contact list -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -24,6 +27,7 @@
         android:name=".DoDisturbApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
